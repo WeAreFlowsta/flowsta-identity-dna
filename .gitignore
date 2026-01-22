@@ -1,0 +1,15 @@
+# Build artifacts
+target/
+*.wasm
+workdir/
+dnas/
+*.happ
+*.dna
+
+# Holochain
+.hc*
+
+# Rust
+Cargo.lock
+**/*.rs.bk
+

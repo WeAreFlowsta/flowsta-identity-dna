@@ -1,0 +1,16 @@
+[workspace]
+members = [
+    "zomes/users/integrity",
+    "zomes/users/coordinator",
+    "zomes/sites/integrity",
+    "zomes/sites/coordinator",
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Holochain 0.6 upgrade: HDK 0.6.0 + HDI 0.7.0
+hdi = "=0.7.0"  # Holochain 0.6
+hdk = "=0.6.0"  # Holochain 0.6
+serde = "1.0"
+holochain_serialized_bytes = "*"  # Required for integrity zomes
+

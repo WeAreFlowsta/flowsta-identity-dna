@@ -1,0 +1,24 @@
+---
+manifest_version: "1"
+name: flowsta_identity_v1_2
+integrity:
+  network_seed: "flowsta-identity-network-v1.2"
+  properties: ~
+  zomes:
+    - name: users_integrity
+      path: zomes/users/integrity.wasm
+      dependencies: []
+    - name: sites_integrity
+      path: zomes/sites/integrity.wasm
+      dependencies: []
+coordinator:
+  zomes:
+    - name: users
+      path: zomes/users/coordinator.wasm
+      dependencies:
+        - name: users_integrity
+    - name: sites
+      path: zomes/sites/coordinator.wasm
+      dependencies:
+        - name: sites_integrity
+

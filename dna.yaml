@@ -1,0 +1,25 @@
+---
+manifest_version: "1"
+name: flowsta_identity
+integrity:
+  network_seed: ~
+  properties: ~
+  origin_time: 2025-01-01T00:00:00.000000Z
+  zomes:
+    - name: users_integrity
+      bundled: zomes/users/integrity.wasm
+      dependencies: []
+    - name: sites_integrity
+      bundled: zomes/sites/integrity.wasm
+      dependencies: []
+coordinator:
+  zomes:
+    - name: users
+      bundled: zomes/users/coordinator.wasm
+      dependencies:
+        - name: users_integrity
+    - name: sites
+      bundled: zomes/sites/coordinator.wasm
+      dependencies:
+        - name: sites_integrity
+

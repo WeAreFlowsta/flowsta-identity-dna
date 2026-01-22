@@ -1,0 +1,14 @@
+[package]
+name = "sites_coordinator"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+name = "sites_coordinator"
+
+[dependencies]
+hdk.workspace = true
+serde.workspace = true
+sites_integrity = { path = "../integrity" }
+

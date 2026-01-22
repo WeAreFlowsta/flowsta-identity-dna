@@ -1,0 +1,16 @@
+---
+manifest_version: "1"
+name: flowsta_identity_v1_0_happ
+description: "Flowsta Public Identity DNA v1.0 - Baseline (display_name only)"
+roles:
+  - name: flowsta_identity_v1_0
+    provisioning:
+      strategy: create
+      deferred: false
+    dna:
+      bundled: "./flowsta_identity_v1_0.dna"
+      properties: ~
+      uid: ~
+      version: ~
+      clone_limit: 0
+

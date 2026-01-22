@@ -1,0 +1,16 @@
+---
+manifest_version: "1"
+name: flowsta_auth
+description: "Flowsta censorship-resistant authentication system"
+roles:
+  - id: flowsta_identity
+    provisioning:
+      strategy: create
+      deferred: false
+    dna:
+      bundled: dnas/flowsta_identity.dna
+      properties: ~
+      uid: ~
+      version: ~
+      clone_limit: 0
+
