@@ -112,7 +112,6 @@ pub fn complete_link_request(input: CompleteLinkInput) -> ExternResult<ActionHas
 
     // Find the matching request
     let mut found_tag: Option<PendingLinkTag> = None;
-    let mut found_link_action: Option<ActionHash> = None;
 
     for link in &links {
         let tag_bytes = SerializedBytes::from(UnsafeBytes::from(link.tag.clone().into_inner()));
@@ -123,14 +122,9 @@ pub fn complete_link_request(input: CompleteLinkInput) -> ExternResult<ActionHas
             {
                 // Check expiry
                 if tag_data.expires_at < now_secs {
-                    // Clean up expired request
-                    let action_hash = ActionHash::from(link.create_link_hash.clone());
-                    let _ = delete_link(action_hash, GetOptions::default());
                     return Err(wasm_error!("Pairing code has expired"));
                 }
                 found_tag = Some(tag_data);
-                found_link_action =
-                    ActionHash::try_from(link.create_link_hash.clone()).ok();
                 break;
             }
         }
@@ -187,10 +181,9 @@ pub fn complete_link_request(input: CompleteLinkInput) -> ExternResult<ActionHas
         (),
     )?;
 
-    // Clean up the pending link request
-    if let Some(link_action) = found_link_action {
-        let _ = delete_link(link_action, GetOptions::default());
-    }
+    // Note: We do NOT delete the PendingLinkRequest link here because it was
+    // created by the initiator agent, and only the original author can delete
+    // a link per our validation rules.
 
     Ok(entry_hash)
 }
@@ -215,7 +208,6 @@ pub fn complete_link_by_code(pairing_code: String) -> ExternResult<ActionHash> {
 
     // Find the matching request by pairing code alone
     let mut found_tag: Option<PendingLinkTag> = None;
-    let mut found_link_action: Option<ActionHash> = None;
 
     for link in &links {
         let tag_bytes = SerializedBytes::from(UnsafeBytes::from(link.tag.clone().into_inner()));
@@ -224,13 +216,9 @@ pub fn complete_link_by_code(pairing_code: String) -> ExternResult<ActionHash> {
             if tag_data.pairing_code == pairing_code {
                 // Check expiry
                 if tag_data.expires_at < now_secs {
-                    let action_hash = ActionHash::from(link.create_link_hash.clone());
-                    let _ = delete_link(action_hash, GetOptions::default());
                     return Err(wasm_error!("Pairing code has expired"));
                 }
                 found_tag = Some(tag_data);
-                found_link_action =
-                    ActionHash::try_from(link.create_link_hash.clone()).ok();
                 break;
             }
         }
@@ -290,10 +278,10 @@ pub fn complete_link_by_code(pairing_code: String) -> ExternResult<ActionHash> {
         (),
     )?;
 
-    // Clean up the pending link request
-    if let Some(link_action) = found_link_action {
-        let _ = delete_link(link_action, GetOptions::default());
-    }
+    // Note: We do NOT delete the PendingLinkRequest link here because it was
+    // created by the initiator (vault) agent, and only the original author can
+    // delete a link per our validation rules. The link is harmless — it has an
+    // expiry time and will be ignored by future lookups.
 
     Ok(entry_hash)
 }
