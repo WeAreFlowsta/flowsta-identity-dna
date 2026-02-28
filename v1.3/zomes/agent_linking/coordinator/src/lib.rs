@@ -195,6 +195,109 @@ pub fn complete_link_request(input: CompleteLinkInput) -> ExternResult<ActionHas
     Ok(entry_hash)
 }
 
+/// Complete a link request using ONLY the pairing code.
+/// The initiator's agent key is extracted from the PendingLinkTag in the DHT link.
+/// This is a UX improvement over complete_link_request — the user doesn't need
+/// to enter the agent key manually.
+///
+/// Called by the TARGET agent (the one whose pubkey has the pending link).
+#[hdk_extern]
+pub fn complete_link_by_code(pairing_code: String) -> ExternResult<ActionHash> {
+    let my_pub_key = agent_info()?.agent_initial_pubkey;
+    let now = sys_time()?;
+    let now_secs = now.as_seconds_and_nanos().0;
+
+    // Find pending link requests on my pubkey
+    let links = get_links(
+        LinkQuery::try_new(my_pub_key.clone(), LinkTypes::PendingLinkRequest)?,
+        GetStrategy::default(),
+    )?;
+
+    // Find the matching request by pairing code alone
+    let mut found_tag: Option<PendingLinkTag> = None;
+    let mut found_link_action: Option<ActionHash> = None;
+
+    for link in &links {
+        let tag_bytes = SerializedBytes::from(UnsafeBytes::from(link.tag.clone().into_inner()));
+        let tag_result: Result<PendingLinkTag, _> = tag_bytes.try_into();
+        if let Ok(tag_data) = tag_result {
+            if tag_data.pairing_code == pairing_code {
+                // Check expiry
+                if tag_data.expires_at < now_secs {
+                    let action_hash = ActionHash::from(link.create_link_hash.clone());
+                    let _ = delete_link(action_hash, GetOptions::default());
+                    return Err(wasm_error!("Pairing code has expired"));
+                }
+                found_tag = Some(tag_data);
+                found_link_action =
+                    ActionHash::try_from(link.create_link_hash.clone()).ok();
+                break;
+            }
+        }
+    }
+
+    let tag_data =
+        found_tag.ok_or_else(|| wasm_error!("No matching pending link request found"))?;
+
+    // Extract the initiator agent from the tag
+    let initiator_agent = tag_data.initiator.clone();
+
+    // Verify the initiator's signature over the sorted key pair
+    let payload = sorted_agent_pair_bytes(&my_pub_key, &initiator_agent)?;
+
+    if !verify_signature(
+        initiator_agent.clone(),
+        tag_data.signature.clone(),
+        payload.clone(),
+    )? {
+        return Err(wasm_error!("Initiator's signature is invalid"));
+    }
+
+    // Sign the sorted key pair ourselves
+    let my_signature = sign(my_pub_key.clone(), payload)?;
+
+    // Construct the IsSamePersonEntry with canonical ordering (agent_a < agent_b)
+    let mut keys = vec![
+        (my_pub_key.clone(), my_signature),
+        (initiator_agent.clone(), tag_data.signature),
+    ];
+    keys.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let entry = IsSamePersonEntry {
+        agent_a: keys[0].0.clone(),
+        signature_a: keys[0].1.clone(),
+        agent_b: keys[1].0.clone(),
+        signature_b: keys[1].1.clone(),
+        created_at: now_secs,
+    };
+
+    // Commit the entry
+    let entry_hash = create_entry(&EntryZomes::IntegrityAgentLinking(
+        EntryTypes::IsSamePerson(entry.clone()),
+    ))?;
+
+    // Create lookup links from BOTH agents' pubkeys to the entry
+    create_link(
+        entry.agent_a.clone(),
+        entry_hash.clone(),
+        LinkTypes::AgentToIsSamePerson,
+        (),
+    )?;
+    create_link(
+        entry.agent_b.clone(),
+        entry_hash.clone(),
+        LinkTypes::AgentToIsSamePerson,
+        (),
+    )?;
+
+    // Clean up the pending link request
+    if let Some(link_action) = found_link_action {
+        let _ = delete_link(link_action, GetOptions::default());
+    }
+
+    Ok(entry_hash)
+}
+
 /// Get all agents linked to a given agent (non-deleted entries only).
 /// Follows links from the agent's pubkey to IsSamePersonEntry entries,
 /// filters out deleted entries, and returns the OTHER agent from each pair.
