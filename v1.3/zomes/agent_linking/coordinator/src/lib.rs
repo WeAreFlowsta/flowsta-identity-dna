@@ -1,5 +1,6 @@
 use hdk::prelude::*;
 use agent_linking_integrity::*;
+use std::collections::HashSet;
 
 #[hdk_dependent_entry_types]
 enum EntryZomes {
@@ -31,6 +32,15 @@ pub struct CompleteLinkInput {
     pub initiator_agent: AgentPubKey,
 }
 
+/// Input for register_pending_link (received via call_remote from the initiator)
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RegisterPendingLinkInput {
+    pub pairing_code: String,
+    pub signature: Signature,
+    pub initiator: AgentPubKey,
+    pub expires_at: i64,
+}
+
 // ── Public Functions ────────────────────────────────────────────────
 
 /// Initiate a link request with a target agent.
@@ -55,15 +65,15 @@ pub fn initiate_link_request(target_agent: AgentPubKey) -> ExternResult<String> 
     // Generate 8-character pairing code from random bytes
     let pairing_code = generate_pairing_code()?;
 
-    // Calculate expiry (10 minutes from now)
+    // Calculate expiry (30 minutes from now — allows time for DHT gossip propagation)
     let now = sys_time()?;
     let now_secs = now.as_seconds_and_nanos().0;
-    let expires_at = now_secs + 600; // 10 minutes
+    let expires_at = now_secs + 1800;
 
     // Create the link tag with all ceremony data
     let tag_data = PendingLinkTag {
         pairing_code: pairing_code.clone(),
-        signature,
+        signature: signature.clone(),
         initiator: my_pub_key.clone(),
         expires_at,
     };
@@ -77,13 +87,30 @@ pub fn initiate_link_request(target_agent: AgentPubKey) -> ExternResult<String> 
             )))
         })?;
 
-    // Create link on TARGET agent's pubkey so they can find it
+    // Create link on TARGET agent's pubkey so they can find it (gossip path)
     create_link(
-        target_agent,
-        my_pub_key,
+        target_agent.clone(),
+        my_pub_key.clone(),
         LinkTypes::PendingLinkRequest,
         tag_bytes.bytes().to_vec(),
     )?;
+
+    // Also push directly to the target agent via call_remote (SBD relay path).
+    // This ensures the target sees the link immediately without waiting for gossip.
+    // Failure is non-fatal — gossip will deliver the link eventually.
+    let push_input = RegisterPendingLinkInput {
+        pairing_code: pairing_code.clone(),
+        signature,
+        initiator: my_pub_key,
+        expires_at,
+    };
+    let _remote_result = call_remote(
+        target_agent,
+        "agent_linking",
+        "register_pending_link".into(),
+        None,
+        push_input,
+    );
 
     Ok(pairing_code)
 }
@@ -456,6 +483,88 @@ pub fn create_direct_link(input: DirectLinkInput) -> ExternResult<ActionHash> {
     )?;
 
     Ok(entry_hash)
+}
+
+/// Receive a pending link request pushed via call_remote from the initiator.
+/// Verifies the initiator's signature and creates the same DHT link that
+/// initiate_link_request creates, but on the local conductor. This way the
+/// target agent sees the link immediately in its local DB without waiting for
+/// gossip propagation.
+#[hdk_extern]
+pub fn register_pending_link(input: RegisterPendingLinkInput) -> ExternResult<()> {
+    let my_pub_key = agent_info()?.agent_initial_pubkey;
+
+    // Verify the initiator's signature over the sorted key pair
+    let payload = sorted_agent_pair_bytes(&my_pub_key, &input.initiator)?;
+    if !verify_signature(input.initiator.clone(), input.signature.clone(), payload)? {
+        return Err(wasm_error!("Invalid initiator signature in register_pending_link"));
+    }
+
+    // Check expiry hasn't passed
+    let now = sys_time()?;
+    let now_secs = now.as_seconds_and_nanos().0;
+    if input.expires_at < now_secs {
+        return Err(wasm_error!("Pending link request has already expired"));
+    }
+
+    // Build the same tag structure as initiate_link_request
+    let tag_data = PendingLinkTag {
+        pairing_code: input.pairing_code,
+        signature: input.signature,
+        initiator: input.initiator.clone(),
+        expires_at: input.expires_at,
+    };
+
+    let tag_bytes: SerializedBytes = tag_data
+        .try_into()
+        .map_err(|e: SerializedBytesError| {
+            wasm_error!(WasmErrorInner::Guest(format!(
+                "Tag serialization error: {:?}",
+                e
+            )))
+        })?;
+
+    // Create the link on MY pubkey (I am the target agent)
+    create_link(
+        my_pub_key,
+        input.initiator,
+        LinkTypes::PendingLinkRequest,
+        tag_bytes.bytes().to_vec(),
+    )?;
+
+    Ok(())
+}
+
+/// Grant unrestricted capability access to register_pending_link.
+/// Called automatically when a new cell is created (init callback).
+#[hdk_extern]
+pub fn init(_: ()) -> ExternResult<InitCallbackResult> {
+    grant_register_pending_link_cap()?;
+    Ok(InitCallbackResult::Pass)
+}
+
+/// Grant unrestricted cap access to register_pending_link.
+/// Call this explicitly after a coordinator update on existing cells,
+/// since init() only runs on new cell creation.
+#[hdk_extern]
+pub fn setup_cap_grants(_: ()) -> ExternResult<()> {
+    grant_register_pending_link_cap()?;
+    Ok(())
+}
+
+/// Internal: create the unrestricted cap grant for register_pending_link.
+fn grant_register_pending_link_cap() -> ExternResult<ActionHash> {
+    let mut functions: HashSet<GrantedFunction> = HashSet::new();
+    functions.insert((
+        zome_info()?.name,
+        "register_pending_link".into(),
+    ));
+
+    create_cap_grant(CapGrantEntry::new(
+        "register_pending_link".to_string(),
+        CapAccess::Unrestricted,
+        GrantedFunctions::Listed(functions),
+    ))
 }
 
 // ── Helper Functions ────────────────────────────────────────────────
