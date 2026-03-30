@@ -5,7 +5,7 @@
 [![Status](https://img.shields.io/badge/status-production-brightgreen.svg)](https://flowsta.com)
 [![Holochain](https://img.shields.io/badge/holochain-0.6.0-blue.svg)](https://holochain.org)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
-[![DNA Version](https://img.shields.io/badge/DNA-v1.2-orange.svg)](#version-history)
+[![DNA Version](https://img.shields.io/badge/DNA-v1.4-orange.svg)](#version-history)
 
 > **🎉 Production Status**: This DNA is currently running in production, powering [Flowsta Auth](https://flowsta.com) - a zero-knowledge authentication system with censorship-resistant identity.
 
@@ -13,7 +13,7 @@
 
 ## 🔍 What is This?
 
-The **Flowsta Identity DNA** is a Holochain Distributed Hash Table (DHT) that stores **public profile data** in a censorship-resistant manner. Once published, user identities cannot be deleted by site owners, government actors, or even Flowsta itself.
+The **Flowsta Identity DNA** is a Holochain Distributed Hash Table (DHT) that stores **pseudonymous identity data** in a censorship-resistant manner. Once published, user identities cannot be deleted by site owners, government actors, or even Flowsta itself. The DHT contains **zero identifiable information** — only W3C DIDs and timestamps. Users remain pseudonymous unless they voluntarily share their DID or agent public key.
 
 **Part of Flowsta's Dual-DNA Architecture**: This DNA works alongside the [Flowsta Private DNA](https://github.com/WeAreFlowsta/flowsta-private-dna) to provide both censorship resistance AND privacy.
 
@@ -21,22 +21,25 @@ The **Flowsta Identity DNA** is a Holochain Distributed Hash Table (DHT) that st
 
 ## 🏗️ Architecture Overview
 
-### What's Stored on This Public DHT:
+### What's Stored on This Public DHT (v1.4):
 
-| Data | Why Public? | Size Limit |
-|------|-------------|------------|
-| **W3C DID** | Decentralized Identifier (designed to be public) | 64 chars |
-| **Profile Picture** | User's chosen avatar or identicon | < 200KB |
-| **Has Custom Picture** | Boolean flag | 1 bit |
+| Data | Why Public? |
+|------|-------------|
+| **W3C DID** | Decentralized Identifier (designed to be public) |
+| **Timestamps** | Created/updated timestamps |
 
-### What's NOT Stored Here (Privacy Fix in v1.2):
+**That's it.** The public DHT is intentionally minimal to preserve pseudonymity.
 
-| Removed in v1.2 | Why Removed | Where It Went |
-|-----------------|-------------|---------------|
-| ❌ **Email Hash** | Vulnerable to rainbow table attacks | Private DNA (encrypted) |
-| ❌ **Display Name** | Personally Identifiable Information (PII) | Private DNA (encrypted) |
+### What's NOT Stored Here:
 
-**Key Insight**: v1.2 removed ALL PII from the public DHT. This DNA now only stores data that is **designed to be public** by W3C DID standards.
+| Removed | Version | Why Removed | Where It Went |
+|---------|---------|-------------|---------------|
+| ❌ **Email Hash** | v1.2 | Vulnerable to rainbow table attacks | Private DNA (encrypted) |
+| ❌ **Display Name** | v1.2 | Personally Identifiable Information (PII) | Private DNA (encrypted) |
+| ❌ **Profile Picture** | v1.4 | Identifiable (photos are biometric data) | Private DNA (encrypted) |
+| ❌ **Has Custom Picture** | v1.4 | Linked to profile picture | Private DNA (encrypted) |
+
+**Key Insight**: The public DHT now contains **zero identifiable information**. Agent keys and DIDs derived from them are pseudonymous — they cannot be linked to a real person unless the user voluntarily shares their DID. This is critical for the upcoming [Sign It](https://github.com/WeAreFlowsta/build-docs) document signing feature, where signature records on the public DHT must not reveal who signed.
 
 ---
 
@@ -47,11 +50,16 @@ The **Flowsta Identity DNA** is a Holochain Distributed Hash Table (DHT) that st
 - ✅ **No secrets** are stored here (all sensitive data is in the Private DNA)
 - ✅ **Censorship-resistant** - Once published, cannot be deleted
 
-### Critical Security Fix (November 2025)
-**v1.0-v1.1 Vulnerability**: Stored `SHA-256(email)` on public DHT  
-**Risk**: Rainbow table attacks could reveal user emails  
-**Fix**: v1.2 completely removed email hashes from public DHT  
-**Status**: All production users migrated to v1.2
+### Pseudonymity by Design (v1.4)
+
+The public DHT is **fully pseudonymous**. Agent public keys are random cryptographic identifiers — they reveal nothing about the person behind them. DIDs are derived from agent keys and are equally pseudonymous. A user only becomes identifiable if they choose to share their DID publicly (e.g., on their website or social media).
+
+This pseudonymity is preserved even with agent-linking attestations (v1.3) — a third party can verify that two agent keys belong to the same person, but cannot determine who that person is.
+
+### Security Fix History
+- **v1.2 (Nov 2025)**: Removed `email_hash` and `display_name` from public DHT (PII vulnerability)
+- **v1.4 (Mar 2026)**: Removed `profile_picture` from public DHT (identifiable — photos are biometric data)
+- **Status**: All production users auto-migrate on login
 
 ---
 
@@ -61,13 +69,16 @@ The **Flowsta Identity DNA** is a Holochain Distributed Hash Table (DHT) that st
 flowsta-identity-dna/
 ├── v1.0/          # Original version (Oct 2024) - Had email_hash vulnerability
 ├── v1.1/          # Incremental update (Oct 2024) - Still had email_hash
-├── v1.2/          # CURRENT - Security fix (Nov 2025)
+├── v1.2/          # Security fix (Nov 2025) - Removed PII
+├── v1.3/          # Agent linking (Mar 2026) - IsSamePersonEntry attestations
+├── v1.4/          # ✅ CURRENT - Profile picture removed (Mar 2026)
 │   ├── dna.yaml       # DNA configuration
 │   ├── happ.yaml      # hApp bundle definition
 │   ├── build.sh       # Build script
 │   └── zomes/
-│       ├── users/     # User profile management
-│       └── sites/     # Site membership tracking
+│       ├── users/         # User profile management (DID + timestamps only)
+│       ├── sites/         # Site membership tracking
+│       └── agent_linking/ # Pairwise agent attestations (v1.3+)
 └── README.md      # This file
 ```
 
@@ -77,12 +88,13 @@ flowsta-identity-dna/
 
 | Version | Date | Status | Changes |
 |---------|------|--------|---------|
-| **v1.2** | Nov 2025 | ✅ **Current** | **Security fix**: Removed `email_hash` and `display_name` from public DHT |
+| **v1.4** | Mar 2026 | ✅ **Current** | **Pseudonymity**: Profile picture removed from public DHT (moved to Private DNA v1.11) |
+| v1.3 | Mar 2026 | Legacy | Agent-linking zome (IsSamePersonEntry pairwise attestations) |
+| v1.2 | Nov 2025 | Legacy | Security fix: Removed `email_hash` and `display_name` from public DHT |
 | v1.1 | Oct 2024 | ⚠️ Deprecated | Added site membership tracking |
 | v1.0 | Oct 2024 | ⚠️ Deprecated | Initial version (email_hash vulnerability) |
 
-**Network Seed**: `flowsta-identity-network-v1.2`  
-**DNA Hash (Production)**: `uhC0k6CE2KlSn06T9Gquq_sQhf9nctsEWa6q09SWBbzdZh4ViXbB7`
+**Network Seed**: `flowsta-identity-network-v1.4`
 
 ---
 
@@ -96,8 +108,8 @@ Stores censorship-resistant identity information.
 #[hdk_entry_helper]
 pub struct UserProfile {
     pub did: String,                    // W3C DID (e.g., "did:flowsta:abc123...")
-    pub profile_picture: String,        // Base64-encoded image or identicon SVG
-    pub has_custom_picture: bool,       // True if user uploaded custom image
+    // 🔴 REMOVED in v1.4: profile_picture (moved to Private DNA for pseudonymity)
+    // 🔴 REMOVED in v1.4: has_custom_picture (moved to Private DNA)
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -268,6 +280,7 @@ We aim to respond within 48 hours and will credit researchers in our security ad
 
 - **November 2025**: Security review identified email_hash vulnerability → Fixed in v1.2
 - **January 2026**: Production deployment with multi-node DHT
+- **March 2026**: Profile picture removed from public DHT for pseudonymity → Fixed in v1.4
 
 We welcome independent security audits of this code.
 
@@ -289,7 +302,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-improvement`)
-3. Make your changes in the **latest version directory** (currently v1.2)
+3. Make your changes in the **latest version directory** (currently v1.4)
 4. Test thoroughly (both unit and integration tests)
 5. Submit a pull request
 
@@ -349,6 +362,6 @@ Special thanks to the Holochain community for guidance on DHT architecture and s
 
 ---
 
-**Status**: ✅ Production (v1.2)  
-**Last Updated**: January 2026  
+**Status**: ✅ Production (v1.4)
+**Last Updated**: March 2026
 **Maintained by**: [Flowsta Team](https://flowsta.com)
