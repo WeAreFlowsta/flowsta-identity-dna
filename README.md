@@ -39,7 +39,7 @@ The **Flowsta Identity DNA** is a Holochain Distributed Hash Table (DHT) that st
 | ❌ **Profile Picture** | v1.4 | Identifiable (photos are biometric data) | Private DNA (encrypted) |
 | ❌ **Has Custom Picture** | v1.4 | Linked to profile picture | Private DNA (encrypted) |
 
-**Key Insight**: The public DHT now contains **zero identifiable information**. Agent keys and DIDs derived from them are pseudonymous — they cannot be linked to a real person unless the user voluntarily shares their DID. This is critical for the upcoming [Sign It](https://github.com/WeAreFlowsta/build-docs) document signing feature, where signature records on the public DHT must not reveal who signed.
+**Key Insight**: The public DHT now contains **zero identifiable information**. Agent keys and DIDs derived from them are pseudonymous — they cannot be linked to a real person unless the user voluntarily shares their DID.
 
 ---
 
