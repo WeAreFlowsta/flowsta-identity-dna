@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "zomes/users/integrity",
+    "zomes/users/coordinator",
+    "zomes/sites/integrity",
+    "zomes/sites/coordinator",
+    "zomes/devices/integrity",
+    "zomes/devices/coordinator",
+]
+resolver = "2"
+
+[workspace.dependencies]
+# Holochain 0.7: HDK 0.7.1 + HDI 0.8.1 (the 0.7.1 conductor line). v1.5 is
+# the 0.7 generation of v1.4: a new DNA hash, so a new network. The
+# agent_linking zomes come from flowsta-agent-linking (branch holochain-0.7),
+# built by build.sh, not from this workspace.
+hdi = "=0.8.1"
+hdk = "=0.7.1"
+serde = "1.0"
+holochain_serialized_bytes = "*"
+base64 = "0.22"
+sha2 = "0.10"

@@ -1,0 +1,37 @@
+---
+manifest_version: "0"
+name: flowsta_identity_v1_5
+integrity:
+  network_seed: "flowsta-identity-network-v1.5"
+  properties: ~
+  zomes:
+    - name: users_integrity
+      path: users_integrity.wasm
+      dependencies: []
+    - name: sites_integrity
+      path: sites_integrity.wasm
+      dependencies: []
+    - name: agent_linking_integrity
+      path: agent_linking_integrity.wasm
+      dependencies: []
+    - name: devices_integrity
+      path: devices_integrity.wasm
+      dependencies: []
+coordinator:
+  zomes:
+    - name: users
+      path: users_coordinator.wasm
+      dependencies:
+        - name: users_integrity
+    - name: sites
+      path: sites_coordinator.wasm
+      dependencies:
+        - name: sites_integrity
+    - name: agent_linking
+      path: agent_linking_coordinator.wasm
+      dependencies:
+        - name: agent_linking_integrity
+    - name: devices
+      path: devices_coordinator.wasm
+      dependencies:
+        - name: devices_integrity

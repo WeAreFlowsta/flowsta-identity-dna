@@ -1,0 +1,26 @@
+[package]
+name = "flowsta-identity-v1-5-tests"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Sweettest for Flowsta Identity DNA v1.5 on a real Holochain 0.7.1 conductor"
+
+# Its own workspace on purpose: the DNA workspace one level up builds for
+# wasm32 and must never pull the conductor crate in.
+[workspace]
+
+[dependencies]
+devices_integrity = { path = "../zomes/devices/integrity" }
+devices_coordinator = { path = "../zomes/devices/coordinator" }
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+holochain = { version = "=0.7.1", features = ["test_utils"] }
+holo_hash = { version = "0.7.1", features = ["encoding"] }
+holochain_serialized_bytes = "0.0.57"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+rand = "0.8"
+tokio = { version = "1", features = ["full"] }
+
+[profile.dev]
+debug = 0
