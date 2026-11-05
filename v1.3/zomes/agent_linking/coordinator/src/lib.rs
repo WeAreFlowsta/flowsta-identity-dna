@@ -26,53 +26,58 @@ pub struct DirectLinkInput {
 
 // ── Public Functions ────────────────────────────────────────────────
 
-/// Get all agents linked to a given agent (non-deleted entries only).
-/// Follows links from the agent's pubkey to IsSamePersonEntry entries,
-/// filters out deleted entries, and returns the OTHER agent from each pair.
+/// Get all agents linked to a given agent.
+/// Follows the agent's lookup links to IsSamePersonEntry entries that name
+/// it, and returns the OTHER agent from each pair. An entry is revoked when
+/// one of its two agents deleted it; a lookup link is gone when its author
+/// or one of the two agents removed it.
 #[hdk_extern]
 pub fn get_linked_agents(agent: AgentPubKey) -> ExternResult<Vec<AgentPubKey>> {
-    let links = get_links(
+    let details = get_links_details(
         LinkQuery::try_new(agent.clone(), LinkTypes::AgentToIsSamePerson)?,
         GetStrategy::default(),
     )?;
 
     let mut linked_agents: Vec<AgentPubKey> = Vec::new();
 
-    for link in links {
-        let action_hash = match ActionHash::try_from(link.target.clone()) {
+    for (create, removals) in details.into_inner() {
+        let Action::CreateLink(link) = create.action() else { continue };
+        let action_hash = match ActionHash::try_from(link.target_address.clone()) {
             Ok(hash) => hash,
             Err(_) => continue,
         };
 
-        // Get the entry details to check for Deletes (coordination layer)
-        let details = match get_details(action_hash, GetOptions::default())? {
-            Some(details) => details,
-            None => continue,
-        };
-
-        match details {
-            Details::Record(record_details) => {
-                // Check if the entry has been deleted (revoked)
-                if !record_details.deletes.is_empty() {
-                    continue;
-                }
-
-                // Extract the entry and find the OTHER agent
-                if let Some(entry) = record_details.record.entry().as_option() {
-                    if let Ok(is_same_person) = IsSamePersonEntry::try_from(entry) {
-                        let other_agent = if is_same_person.agent_a == agent {
-                            is_same_person.agent_b.clone()
-                        } else {
-                            is_same_person.agent_a.clone()
-                        };
-
-                        if !linked_agents.contains(&other_agent) {
-                            linked_agents.push(other_agent);
-                        }
-                    }
-                }
-            }
+        let record_details = match get_details(action_hash, GetOptions::default())? {
+            Some(Details::Record(record_details)) => record_details,
             _ => continue,
+        };
+        let Some(is_same_person) = record_details
+            .record
+            .entry()
+            .as_option()
+            .and_then(|entry| IsSamePersonEntry::try_from(entry).ok())
+        else {
+            continue;
+        };
+        // Only an entry that names this agent links it.
+        if is_same_person.agent_a != agent && is_same_person.agent_b != agent {
+            continue;
+        }
+        let one_of_the_two = |a: &AgentPubKey| *a == is_same_person.agent_a || *a == is_same_person.agent_b;
+        if removals.iter().any(|r| r.action().author() == create.action().author() || one_of_the_two(r.action().author())) {
+            continue;
+        }
+        if record_details.deletes.iter().any(|d| one_of_the_two(d.action().author())) {
+            continue;
+        }
+
+        let other_agent = if is_same_person.agent_a == agent {
+            is_same_person.agent_b.clone()
+        } else {
+            is_same_person.agent_a.clone()
+        };
+        if !linked_agents.contains(&other_agent) {
+            linked_agents.push(other_agent);
         }
     }
 
